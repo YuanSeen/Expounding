@@ -28,6 +28,8 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import android.content.Context;
+
 
 public class MainActivity extends AppCompatActivity {
 
@@ -171,12 +173,17 @@ public class MainActivity extends AppCompatActivity {
         // 先保存所有编辑框的内容
         saveAllEditTextChanges();
 
-        // 构建文本内容
+        // 构建文本内容 - 移除段落间的空行
         StringBuilder content = new StringBuilder();
-        for (ParagraphItem paragraph : paragraphs) {
+        for (int i = 0; i < paragraphs.size(); i++) {
+            ParagraphItem paragraph = paragraphs.get(i);
             String text = paragraph.getText();
             if (text != null && !text.isEmpty()) {
-                content.append(text).append("\n\n");
+                content.append(text);
+                // 如果不是最后一段，添加一个换行符（不分段，只换行）
+                if (i < paragraphs.size() - 1) {
+                    content.append("\n");
+                }
             }
         }
 
@@ -185,42 +192,17 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        // 生成文件名
-        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
-        String fileName = "作文文本_" + timeStamp + ".txt";
+        // 复制到剪贴板
+        android.content.ClipboardManager clipboard = (android.content.ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        android.content.ClipData clip = android.content.ClipData.newPlainText("作文文本", content.toString());
+        clipboard.setPrimaryClip(clip);
 
-        try {
-            File file;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                // Android 10+ 使用 MediaStore 保存到 Downloads 目录
-                android.content.ContentValues values = new android.content.ContentValues();
-                values.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fileName);
-                values.put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/plain");
-                values.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
+        Toast.makeText(this, "文本已复制到剪贴板", Toast.LENGTH_SHORT).show();
 
-                android.net.Uri uri = getContentResolver().insert(android.provider.MediaStore.Files.getContentUri("external"), values);
-                if (uri != null) {
-                    try (FileOutputStream fos = (FileOutputStream) getContentResolver().openOutputStream(uri)) {
-                        fos.write(content.toString().getBytes());
-                        Toast.makeText(this, "文本已导出到：Downloads/" + fileName, Toast.LENGTH_LONG).show();
-                    }
-                }
-            } else {
-                // Android 9 及以下保存到外部存储
-                File downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-                if (!downloadsDir.exists()) {
-                    downloadsDir.mkdirs();
-                }
-                file = new File(downloadsDir, fileName);
-                try (FileWriter writer = new FileWriter(file)) {
-                    writer.write(content.toString());
-                    Toast.makeText(this, "文本已导出到：" + file.getAbsolutePath(), Toast.LENGTH_LONG).show();
-                }
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-            Toast.makeText(this, "导出失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
-        }
+        // 可选：同时显示文本预览
+        String previewText = content.length() > 50 ?
+                content.substring(0, 50) + "..." : content.toString();
+        Toast.makeText(this, "预览: " + previewText, Toast.LENGTH_LONG).show();
     }
 
     private void exportImageToFile() {
@@ -232,22 +214,14 @@ public class MainActivity extends AppCompatActivity {
         redGridPaper.post(new Runnable() {
             @Override
             public void run() {
-                // 创建Bitmap
-                Bitmap bitmap = Bitmap.createBitmap(
-                        redGridPaper.getWidth(),
-                        redGridPaper.getHeight(),
-                        Bitmap.Config.ARGB_8888
-                );
-
-                // 将视图绘制到Bitmap上
-                Canvas canvas = new Canvas(bitmap);
-                redGridPaper.draw(canvas);
-
-                // 生成文件名
-                String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
-                String fileName = "作文纸_" + timeStamp + ".png";
-
                 try {
+                    // 使用专门的方法创建导出用的Bitmap（确保白色背景）
+                    Bitmap bitmap = redGridPaper.createExportBitmap();
+
+                    // 生成文件名
+                    String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
+                    String fileName = "作文纸_" + timeStamp + ".png";
+
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                         // Android 10+ 使用 MediaStore 保存到 Pictures 目录
                         android.content.ContentValues values = new android.content.ContentValues();
@@ -264,21 +238,29 @@ public class MainActivity extends AppCompatActivity {
                         }
                     } else {
                         // Android 9 及以下保存到外部存储
-                        File picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES);
-                        if (!picturesDir.exists()) {
-                            picturesDir.mkdirs();
-                        }
-                        File file = new File(picturesDir, fileName);
-                        try (FileOutputStream fos = new FileOutputStream(file)) {
-                            bitmap.compress(Bitmap.CompressFormat.PNG, 100, fos);
-                            Toast.makeText(MainActivity.this, "图片已导出到：" + file.getAbsolutePath(), Toast.LENGTH_LONG).show();
+                        if (ContextCompat.checkSelfPermission(MainActivity.this,
+                                android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                                == PackageManager.PERMISSION_GRANTED) {
+
+                            File picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES);
+                            if (!picturesDir.exists()) {
+                                picturesDir.mkdirs();
+                            }
+                            File file = new File(picturesDir, fileName);
+                            try (FileOutputStream fos = new FileOutputStream(file)) {
+                                bitmap.compress(Bitmap.CompressFormat.PNG, 100, fos);
+                                Toast.makeText(MainActivity.this, "图片已导出到：" + file.getAbsolutePath(), Toast.LENGTH_LONG).show();
+                            }
+                        } else {
+                            Toast.makeText(MainActivity.this, "需要存储权限才能导出图片", Toast.LENGTH_SHORT).show();
                         }
                     }
                 } catch (IOException e) {
                     e.printStackTrace();
                     Toast.makeText(MainActivity.this, "导出失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
-                } finally {
-                    bitmap.recycle();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    Toast.makeText(MainActivity.this, "导出失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
                 }
             }
         });
