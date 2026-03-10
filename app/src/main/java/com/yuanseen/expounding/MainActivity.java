@@ -2,7 +2,6 @@ package com.yuanseen.expounding;
 
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
-import android.graphics.Canvas;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
@@ -21,7 +20,6 @@ import com.yuanseen.expounding.ui.RedGridPaperView;
 import com.yuanseen.expounding.ui.TextAlignment;
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -29,7 +27,6 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import android.content.Context;
-
 
 public class MainActivity extends AppCompatActivity {
 
@@ -53,6 +50,13 @@ public class MainActivity extends AppCompatActivity {
         setupRecyclerView();
         setupListeners();
         checkPermission();
+
+        // 设置 RedGridPaperView 最小显示4行
+        redGridPaper.setMinRows(4);
+        redGridPaper.setForceMinRows(true);
+
+        // 初始应用一次，显示4行空白格
+        redGridPaper.setParagraphs(paragraphs);
     }
 
     private void initViews() {
@@ -75,6 +79,9 @@ public class MainActivity extends AppCompatActivity {
                 paragraphs.remove(position);
                 adapter.notifyItemRemoved(position);
                 adapter.notifyItemRangeChanged(position, paragraphs.size());
+
+                // 当段落被删除后，更新作文纸显示
+                // 注意：这里不自动应用排版，等待用户点击"应用排版"按钮
             }
 
             @Override
@@ -99,6 +106,9 @@ public class MainActivity extends AppCompatActivity {
                 paragraphs.add(new ParagraphItem("", TextAlignment.LEFT));
                 adapter.notifyItemInserted(paragraphs.size() - 1);
                 recyclerView.smoothScrollToPosition(paragraphs.size() - 1);
+
+                // 当添加段落后，更新作文纸显示
+                // 注意：这里不自动应用排版，等待用户点击"应用排版"按钮
             }
         });
 
@@ -109,6 +119,9 @@ public class MainActivity extends AppCompatActivity {
                 saveAllEditTextChanges();
                 // 应用排版
                 redGridPaper.setParagraphs(paragraphs);
+
+                // 显示当前总行数
+                int totalRows = redGridPaper.getDisplayRows();
             }
         });
 

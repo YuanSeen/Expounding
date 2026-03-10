@@ -26,24 +26,39 @@ public class TextProcessor {
                 continue;
             }
 
-            // 按25格分行的逻辑
+            // 将文本转换为格子序列
+            List<String> gridList = convertToGridList(cleanText);
+
+            // 按每行25格分行的逻辑
             int startIndex = 0;
-            while (startIndex < cleanText.length()) {
-                int endIndex = Math.min(startIndex + ROW_LENGTH, cleanText.length());
-                String rawLine = cleanText.substring(startIndex, endIndex);
+            while (startIndex < gridList.size()) {
+                int endIndex = Math.min(startIndex + ROW_LENGTH, gridList.size());
+                List<String> rowGrids = gridList.subList(startIndex, endIndex);
+
+                // 将格子列表合并为行字符串，格子之间用特殊分隔符标记
+                StringBuilder rowBuilder = new StringBuilder();
+                for (int i = 0; i < rowGrids.size(); i++) {
+                    if (i > 0) {
+                        rowBuilder.append("‖"); // 使用特殊分隔符标记格子边界
+                    }
+                    rowBuilder.append(rowGrids.get(i));
+                }
+                String rawLine = rowBuilder.toString();
 
                 // 根据对齐方式处理每行
                 String processedLine;
+                int gridCount = rowGrids.size();
+
                 switch (alignment) {
                     case CENTER:
-                        processedLine = centerAlign(rawLine);
+                        processedLine = centerAlign(rawLine, gridCount);
                         break;
                     case RIGHT:
-                        processedLine = rightAlign(rawLine);
+                        processedLine = rightAlign(rawLine, gridCount);
                         break;
                     case LEFT:
                     default:
-                        processedLine = leftAlign(rawLine);
+                        processedLine = leftAlign(rawLine, gridCount);
                         break;
                 }
 
@@ -55,40 +70,108 @@ public class TextProcessor {
         return result;
     }
 
-    private static String createEmptyLine(TextAlignment alignment) {
-        switch (alignment) {
-            case CENTER:
-                return centerAlign("");
-            case RIGHT:
-                return rightAlign("");
-            case LEFT:
-            default:
-                return leftAlign("");
+    private static List<String> convertToGridList(String text) {
+        List<String> gridList = new ArrayList<>();
+        int i = 0;
+
+        while (i < text.length()) {
+            char c = text.charAt(i);
+
+            // 判断是否为中文字符
+            if (isChinese(c)) {
+                gridList.add(String.valueOf(c));
+                i++;
+            } else {
+                // 字母、数字，两个一组
+                StringBuilder grid = new StringBuilder();
+                grid.append(c);
+
+                // 检查下一个字符
+                if (i + 1 < text.length()) {
+                    char nextChar = text.charAt(i + 1);
+                    if (!isChinese(nextChar)) {
+                        grid.append(nextChar);
+                        i += 2;
+                    } else {
+                        i++;
+                    }
+                } else {
+                    i++;
+                }
+
+                gridList.add(grid.toString());
+            }
         }
+
+        return gridList;
     }
 
-    private static String leftAlign(String line) {
-        return line + repeatChar('　', ROW_LENGTH - line.length()); // 使用全角空格
+    private static boolean isChinese(char c) {
+        Character.UnicodeBlock ub = Character.UnicodeBlock.of(c);
+        return ub == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS
+                || ub == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS
+                || ub == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A
+                || ub == Character.UnicodeBlock.CJK_SYMBOLS_AND_PUNCTUATION
+                || ub == Character.UnicodeBlock.HALFWIDTH_AND_FULLWIDTH_FORMS;
     }
 
-    private static String centerAlign(String line) {
-        int spacesNeeded = ROW_LENGTH - line.length();
+    private static String createEmptyLine(TextAlignment alignment) {
+        StringBuilder line = new StringBuilder();
+        for (int i = 0; i < 25; i++) {
+            if (i > 0) line.append("‖");
+            line.append("　");
+        }
+        return line.toString();
+    }
+
+    private static String leftAlign(String line, int gridCount) {
+        StringBuilder result = new StringBuilder(line);
+        for (int i = gridCount; i < ROW_LENGTH; i++) {
+            if (result.length() > 0) result.append("‖");
+            result.append("　");
+        }
+        return result.toString();
+    }
+
+    private static String centerAlign(String line, int gridCount) {
+        int spacesNeeded = ROW_LENGTH - gridCount;
         int leftSpaces = spacesNeeded / 2;
         int rightSpaces = spacesNeeded - leftSpaces;
 
-        return repeatChar('　', leftSpaces) + line + repeatChar('　', rightSpaces);
-    }
+        StringBuilder result = new StringBuilder();
 
-    private static String rightAlign(String line) {
-        return repeatChar('　', ROW_LENGTH - line.length()) + line;
-    }
-
-    private static String repeatChar(char c, int count) {
-        if (count <= 0) return "";
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < count; i++) {
-            sb.append(c);
+        // 左侧空格
+        for (int i = 0; i < leftSpaces; i++) {
+            if (result.length() > 0) result.append("‖");
+            result.append("　");
         }
-        return sb.toString();
+
+        // 内容
+        if (result.length() > 0 && line.length() > 0) result.append("‖");
+        result.append(line);
+
+        // 右侧空格
+        for (int i = 0; i < rightSpaces; i++) {
+            result.append("‖");
+            result.append("　");
+        }
+
+        return result.toString();
+    }
+
+    private static String rightAlign(String line, int gridCount) {
+        StringBuilder result = new StringBuilder();
+
+        // 左侧空格
+        for (int i = gridCount; i < ROW_LENGTH; i++) {
+            if (result.length() > 0) result.append("‖");
+            result.append("　");
+        }
+
+        // 内容
+        if (result.length() > 0 && line.length() > 0) result.append("‖");
+        result.append(line);
+
+        return result.toString();
     }
 }

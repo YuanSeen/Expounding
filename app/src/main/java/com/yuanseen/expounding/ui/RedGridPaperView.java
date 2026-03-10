@@ -5,7 +5,6 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Bitmap;
-import android.graphics.DashPathEffect;
 import android.util.AttributeSet;
 import android.view.View;
 import androidx.annotation.Nullable;
@@ -21,7 +20,6 @@ public class RedGridPaperView extends View {
     private Paint textPaint;
     private Paint borderPaint;
     private Paint markPaint; // 用于字数标注的画笔
-    private Paint backgroundPaint; // 背景画笔
     private List<String> lines;
     private float cellSize;
     private int rowCount;
@@ -32,6 +30,10 @@ public class RedGridPaperView extends View {
     private static final int ROW_SPACING = 8; // 行间距（像素）
     private static final float MARK_TEXT_SIZE = 12f; // 字数标注文字大小（像素）
     private static final int TOP_PADDING = 20; // 顶部留白（像素）
+
+    // 新增：最小行数设置
+    private int minRows = 4; // 默认最小显示4行
+    private boolean forceMinRows = true; // 是否强制显示最小行数
 
     public RedGridPaperView(Context context) {
         super(context);
@@ -51,11 +53,6 @@ public class RedGridPaperView extends View {
     private void init() {
         // 设置默认背景为白色
         setBackgroundColor(Color.WHITE);
-
-        // 背景画笔（用于导出时确保背景是白色）
-        backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        backgroundPaint.setColor(Color.WHITE);
-        backgroundPaint.setStyle(Paint.Style.FILL);
 
         // 网格线画笔 - 淡红色，更细
         gridPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -83,6 +80,24 @@ public class RedGridPaperView extends View {
         lines = new ArrayList<>();
     }
 
+    /**
+     * 设置是否强制显示最小行数
+     */
+    public void setForceMinRows(boolean force) {
+        this.forceMinRows = force;
+        invalidate();
+        requestLayout();
+    }
+
+    /**
+     * 设置最小行数
+     */
+    public void setMinRows(int rows) {
+        this.minRows = rows;
+        invalidate();
+        requestLayout();
+    }
+
     public void setParagraphs(List<ParagraphItem> paragraphs) {
         lines = TextProcessor.processParagraphs(paragraphs);
         rowCount = lines.size();
@@ -96,8 +111,15 @@ public class RedGridPaperView extends View {
         int width = MeasureSpec.getSize(widthMeasureSpec);
         cellSize = width / (float) COLS;
 
+        // 决定实际显示的行数
+        int displayRows = rowCount;
+        if (forceMinRows && displayRows < minRows) {
+            displayRows = minRows;
+        }
+
         // 高度 = 顶部留白 + (行数 * 格子高度) + ((行数 - 1) * 行间距) + 底部留白（为字数标注留出空间）
-        int desiredHeight = (int) (TOP_PADDING + rowCount * cellSize + (rowCount - 1) * ROW_SPACING + MARK_TEXT_SIZE + 20);
+        int desiredHeight = (int) (TOP_PADDING + displayRows * cellSize +
+                (displayRows - 1) * ROW_SPACING + MARK_TEXT_SIZE + 20);
 
         // 考虑padding
         int height = resolveSize(desiredHeight, heightMeasureSpec);
@@ -112,20 +134,26 @@ public class RedGridPaperView extends View {
         // 绘制白色背景（确保背景是纯白色）
         canvas.drawColor(Color.WHITE);
 
+        // 决定实际显示的行数
+        int displayRows = rowCount;
+        if (forceMinRows && displayRows < minRows) {
+            displayRows = minRows;
+        }
+
         // 绘制网格（考虑顶部留白）
-        drawGrid(canvas);
+        drawGrid(canvas, displayRows);
 
         // 绘制外边框（考虑顶部留白）
-        drawBorder(canvas);
+        drawBorder(canvas, displayRows);
 
         // 绘制文字（考虑顶部留白）
         drawText(canvas);
 
         // 绘制字数标注（考虑顶部留白）
-        drawWordCountMarks(canvas);
+        drawWordCountMarks(canvas, displayRows);
     }
 
-    private void drawGrid(Canvas canvas) {
+    private void drawGrid(Canvas canvas, int displayRows) {
         float width = getWidth();
 
         // 计算实际绘制区域（去掉边框宽度的影响）
@@ -133,7 +161,7 @@ public class RedGridPaperView extends View {
         float endX = width - BORDER_WIDTH / 2f;
 
         // 绘制每一行的网格
-        for (int row = 0; row < rowCount; row++) {
+        for (int row = 0; row < displayRows; row++) {
             // 计算行的起始Y坐标（考虑顶部留白）
             float rowStartY = TOP_PADDING + row * (cellSize + ROW_SPACING) + BORDER_WIDTH / 2f;
             float rowEndY = rowStartY + cellSize;
@@ -152,11 +180,11 @@ public class RedGridPaperView extends View {
         }
     }
 
-    private void drawBorder(Canvas canvas) {
+    private void drawBorder(Canvas canvas, int displayRows) {
         float width = getWidth();
 
         // 绘制每一行的独立边框
-        for (int row = 0; row < rowCount; row++) {
+        for (int row = 0; row < displayRows; row++) {
             // 计算行的起始和结束Y坐标（考虑顶部留白）
             float rowStartY = TOP_PADDING + row * (cellSize + ROW_SPACING);
             float rowEndY = rowStartY + cellSize;
@@ -183,25 +211,40 @@ public class RedGridPaperView extends View {
 
         for (int i = 0; i < lines.size(); i++) {
             String line = lines.get(i);
-            // 计算Y坐标（考虑顶部留白）
+
+            // 按分隔符分割格子
+            String[] grids = line.split("‖");
+
+            // 计算Y坐标
             float y = TOP_PADDING + i * (cellSize + ROW_SPACING) + textOffset;
 
-            for (int j = 0; j < line.length() && j < COLS; j++) {
-                char c = line.charAt(j);
-                // 水平居中
-                float textWidth = textPaint.measureText(String.valueOf(c));
-                float x = j * cellSize + (cellSize - textWidth) / 2f;
+            for (int j = 0; j < grids.length && j < COLS; j++) {
+                String grid = grids[j];
 
-                canvas.drawText(String.valueOf(c), x, y, textPaint);
+                // 计算该格子的X起始位置
+                float cellX = j * cellSize;
+
+                if (!grid.equals("　")) { // 如果不是空格才绘制
+                    // 计算整个格子的中心位置
+                    float cellCenterX = cellX + cellSize / 2f;
+
+                    // 计算文字宽度
+                    float textWidth = textPaint.measureText(grid);
+
+                    // 计算X坐标，使文字在格子中居中
+                    float x = cellCenterX - textWidth / 2f;
+
+                    canvas.drawText(grid, x, y, textPaint);
+                }
             }
         }
     }
 
-    private void drawWordCountMarks(Canvas canvas) {
-        if (rowCount == 0) return;
+    private void drawWordCountMarks(Canvas canvas, int displayRows) {
+        if (displayRows == 0) return;
 
         // 每5行标注一次：100, 200, 300, ...
-        for (int row = 3; row < rowCount; row += 4) { // row 4 是第5行（从0开始计数）
+        for (int row = 3; row < displayRows; row += 4) { // row 4 是第5行（从0开始计数）
             float x = getWidth() - cellSize / 2f; // 最后一格的中间位置
 
             // 计算标注的Y位置：在当前行的下方，紧挨着格子底部（考虑顶部留白）
@@ -244,17 +287,23 @@ public class RedGridPaperView extends View {
         // 先绘制白色背景
         canvas.drawColor(Color.WHITE);
 
+        // 决定实际显示的行数
+        int displayRows = rowCount;
+        if (forceMinRows && displayRows < minRows) {
+            displayRows = minRows;
+        }
+
         // 绘制网格（考虑顶部留白）
-        drawGrid(canvas);
+        drawGrid(canvas, displayRows);
 
         // 绘制外边框（考虑顶部留白）
-        drawBorder(canvas);
+        drawBorder(canvas, displayRows);
 
         // 绘制文字（考虑顶部留白）
         drawText(canvas);
 
         // 绘制字数标注（考虑顶部留白）
-        drawWordCountMarks(canvas);
+        drawWordCountMarks(canvas, displayRows);
 
         return bitmap;
     }
@@ -264,5 +313,15 @@ public class RedGridPaperView extends View {
      */
     public int getTopPadding() {
         return TOP_PADDING;
+    }
+
+    /**
+     * 获取当前实际显示的行数
+     */
+    public int getDisplayRows() {
+        if (forceMinRows && rowCount < minRows) {
+            return minRows;
+        }
+        return rowCount;
     }
 }
