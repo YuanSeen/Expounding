@@ -27,19 +27,24 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
 
 public class MainActivity extends AppCompatActivity {
 
     private static final int REQUEST_CODE_PERMISSION = 100;
+    private static final long AUTO_APPLY_DELAY = 500; // 延迟500ms后应用排版，避免频繁刷新
 
     private RedGridPaperView redGridPaper;
     private RecyclerView recyclerView;
     private ParagraphAdapter adapter;
     private List<ParagraphItem> paragraphs;
     private Button btnAddParagraph;
-    private Button btnApply;
     private Button btnExportText;
     private Button btnExportImage;
+
+    private Handler autoApplyHandler = new Handler(Looper.getMainLooper());
+    private Runnable autoApplyRunnable;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -57,15 +62,29 @@ public class MainActivity extends AppCompatActivity {
 
         // 初始应用一次，显示4行空白格
         redGridPaper.setParagraphs(paragraphs);
+
+        // 初始化自动应用排版任务
+        autoApplyRunnable = new Runnable() {
+            @Override
+            public void run() {
+                applyParagraphsToPaper();
+            }
+        };
     }
 
     private void initViews() {
         redGridPaper = findViewById(R.id.redGridPaper);
         recyclerView = findViewById(R.id.recyclerView);
         btnAddParagraph = findViewById(R.id.btnAddParagraph);
-        btnApply = findViewById(R.id.btnApply);
         btnExportText = findViewById(R.id.btnExportText);
         btnExportImage = findViewById(R.id.btnExportImage);
+
+        // 隐藏或移除应用排版按钮
+        // 如果布局文件中还有btnApply，可以在这里隐藏它
+        Button btnApply = findViewById(R.id.btnApply);
+        if (btnApply != null) {
+            btnApply.setVisibility(View.GONE);
+        }
     }
 
     private void setupRecyclerView() {
@@ -80,18 +99,23 @@ public class MainActivity extends AppCompatActivity {
                 adapter.notifyItemRemoved(position);
                 adapter.notifyItemRangeChanged(position, paragraphs.size());
 
-                // 当段落被删除后，更新作文纸显示
-                // 注意：这里不自动应用排版，等待用户点击"应用排版"按钮
+                // 段落被删除后，自动应用排版
+                applyParagraphsToPaper();
             }
 
             @Override
             public void onAlignmentChanged(int position, TextAlignment alignment) {
                 paragraphs.get(position).setAlignment(alignment);
+                // 对齐方式改变，自动应用排版
+                applyParagraphsToPaper();
             }
 
             @Override
             public void onTextChanged(int position, String text) {
                 paragraphs.get(position).setText(text);
+                // 延迟应用排版，避免快速输入时频繁刷新
+                autoApplyHandler.removeCallbacks(autoApplyRunnable);
+                autoApplyHandler.postDelayed(autoApplyRunnable, AUTO_APPLY_DELAY);
             }
         });
 
@@ -107,21 +131,8 @@ public class MainActivity extends AppCompatActivity {
                 adapter.notifyItemInserted(paragraphs.size() - 1);
                 recyclerView.smoothScrollToPosition(paragraphs.size() - 1);
 
-                // 当添加段落后，更新作文纸显示
-                // 注意：这里不自动应用排版，等待用户点击"应用排版"按钮
-            }
-        });
-
-        btnApply.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                // 确保所有EditText的内容都已保存
-                saveAllEditTextChanges();
-                // 应用排版
-                redGridPaper.setParagraphs(paragraphs);
-
-                // 显示当前总行数
-                int totalRows = redGridPaper.getDisplayRows();
+                // 当添加段落后，自动应用排版
+                applyParagraphsToPaper();
             }
         });
 
@@ -138,6 +149,16 @@ public class MainActivity extends AppCompatActivity {
                 exportImageToFile();
             }
         });
+    }
+
+    /**
+     * 将段落应用到作文纸视图
+     */
+    private void applyParagraphsToPaper() {
+        // 确保所有EditText的内容都已保存
+        saveAllEditTextChanges();
+        // 应用排版
+        redGridPaper.setParagraphs(paragraphs);
     }
 
     private void saveAllEditTextChanges() {
@@ -277,5 +298,14 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        // 移除所有回调，避免内存泄漏
+        if (autoApplyHandler != null) {
+            autoApplyHandler.removeCallbacksAndMessages(null);
+        }
     }
 }

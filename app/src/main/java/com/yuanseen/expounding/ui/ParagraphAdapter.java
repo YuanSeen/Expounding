@@ -1,5 +1,7 @@
 package com.yuanseen.expounding.ui;
 
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -14,7 +16,7 @@ import java.util.List;
 
 public class ParagraphAdapter extends RecyclerView.Adapter<ParagraphAdapter.ViewHolder> {
     private List<ParagraphItem> paragraphs;
-    private OnParagraphActionListener listener;
+    private static OnParagraphActionListener listener;
 
     public interface OnParagraphActionListener {
         void onRemoveClick(int position);
@@ -39,10 +41,14 @@ public class ParagraphAdapter extends RecyclerView.Adapter<ParagraphAdapter.View
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         ParagraphItem item = paragraphs.get(position);
 
+        // 设置文本，避免触发TextWatcher
+        holder.editText.removeTextChangedListener(holder.textWatcher);
         holder.editText.setText(item.getText());
         holder.editText.setHint("请输入第" + (position + 1) + "段文本...");
+        holder.editText.addTextChangedListener(holder.textWatcher);
 
         // 设置对齐方式
+        holder.radioGroup.setOnCheckedChangeListener(null); // 先移除监听器
         switch (item.getAlignment()) {
             case LEFT:
                 holder.radioLeft.setChecked(true);
@@ -55,7 +61,7 @@ public class ParagraphAdapter extends RecyclerView.Adapter<ParagraphAdapter.View
                 break;
         }
 
-        // 设置监听器
+        // 设置对齐方式监听器
         holder.radioGroup.setOnCheckedChangeListener((group, checkedId) -> {
             TextAlignment alignment;
             if (checkedId == R.id.radioLeft) {
@@ -65,16 +71,15 @@ public class ParagraphAdapter extends RecyclerView.Adapter<ParagraphAdapter.View
             } else {
                 alignment = TextAlignment.RIGHT;
             }
-            listener.onAlignmentChanged(position, alignment);
+            listener.onAlignmentChanged(holder.getAdapterPosition(), alignment);
         });
 
-        holder.editText.setOnFocusChangeListener((v, hasFocus) -> {
-            if (!hasFocus) {
-                listener.onTextChanged(position, holder.editText.getText().toString());
+        holder.btnRemove.setOnClickListener(v -> {
+            int pos = holder.getAdapterPosition();
+            if (pos != RecyclerView.NO_POSITION) {
+                listener.onRemoveClick(pos);
             }
         });
-
-        holder.btnRemove.setOnClickListener(v -> listener.onRemoveClick(position));
 
         // 如果只有一个段落，禁用删除按钮
         holder.btnRemove.setEnabled(paragraphs.size() > 1);
@@ -92,6 +97,7 @@ public class ParagraphAdapter extends RecyclerView.Adapter<ParagraphAdapter.View
         RadioButton radioCenter;
         RadioButton radioRight;
         Button btnRemove;
+        TextWatcher textWatcher;
 
         ViewHolder(View itemView) {
             super(itemView);
@@ -101,6 +107,40 @@ public class ParagraphAdapter extends RecyclerView.Adapter<ParagraphAdapter.View
             radioCenter = itemView.findViewById(R.id.radioCenter);
             radioRight = itemView.findViewById(R.id.radioRight);
             btnRemove = itemView.findViewById(R.id.btnRemove);
+
+            // 创建TextWatcher
+            textWatcher = new TextWatcher() {
+                @Override
+                public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+                    // 不需要处理
+                }
+
+                @Override
+                public void onTextChanged(CharSequence s, int start, int before, int count) {
+                    // 不需要处理
+                }
+
+                @Override
+                public void afterTextChanged(Editable s) {
+                    // 这里回调文本变化
+                    if (listener != null && getAdapterPosition() != RecyclerView.NO_POSITION) {
+                        listener.onTextChanged(getAdapterPosition(), s.toString());
+                    }
+                }
+            };
         }
     }
+
+    // 添加一个方法来获取listener（在TextWatcher中使用）
+//    private OnParagraphActionListener listener;
+
+    // 在构造函数中设置listener
+    // 注意：需要在ViewHolder中能访问到listener，所以需要将listener设为成员变量并在构造函数中赋值
+    // 修改构造函数的代码：
+    /*
+    public ParagraphAdapter(List<ParagraphItem> paragraphs, OnParagraphActionListener listener) {
+        this.paragraphs = paragraphs;
+        this.listener = listener;
+    }
+    */
 }
