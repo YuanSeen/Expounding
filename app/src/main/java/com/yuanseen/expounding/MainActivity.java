@@ -104,6 +104,11 @@ public class MainActivity extends AppCompatActivity {
             }
 
             @Override
+            public void onSplitClick(int position, int cursorPosition) {
+                splitParagraph(position, cursorPosition);
+            }
+
+            @Override
             public void onAlignmentChanged(int position, TextAlignment alignment) {
                 paragraphs.get(position).setAlignment(alignment);
                 // 对齐方式改变，自动应用排版
@@ -122,7 +127,65 @@ public class MainActivity extends AppCompatActivity {
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
         recyclerView.setAdapter(adapter);
     }
+    /**
+     * 在指定位置拆分段落
+     * @param position 当前段落的位置
+     * @param cursorPosition 光标位置，用于拆分文本
+     */
+    private void splitParagraph(int position, int cursorPosition) {
+        if (position < 0 || position >= paragraphs.size()) {
+            return;
+        }
 
+        ParagraphItem currentParagraph = paragraphs.get(position);
+        String currentText = currentParagraph.getText();
+
+        // 如果光标位置无效（例如没有焦点），默认为文本末尾
+        if (cursorPosition < 0 || cursorPosition > currentText.length()) {
+            cursorPosition = currentText.length();
+        }
+
+        // 获取前半部分和后半部分文本
+        String firstPart = currentText.substring(0, cursorPosition);
+        String secondPart = currentText.substring(cursorPosition);
+
+        // 更新当前段落为前半部分
+        currentParagraph.setText(firstPart);
+
+        // 立即更新当前项的 EditText 显示
+        RecyclerView.ViewHolder holder = recyclerView.findViewHolderForAdapterPosition(position);
+        if (holder instanceof ParagraphAdapter.ViewHolder) {
+            ParagraphAdapter.ViewHolder viewHolder = (ParagraphAdapter.ViewHolder) holder;
+            // 临时移除 TextWatcher，避免触发 onTextChanged
+            viewHolder.editText.removeTextChangedListener(viewHolder.textWatcher);
+            viewHolder.editText.setText(firstPart);
+            viewHolder.editText.addTextChangedListener(viewHolder.textWatcher);
+            // 将光标移到末尾
+            viewHolder.editText.setSelection(firstPart.length());
+        }
+
+        // 在后半部分创建新段落（使用当前段落的对齐方式）
+        ParagraphItem newParagraph = new ParagraphItem(secondPart, currentParagraph.getAlignment());
+
+        // 在当前位置后面插入新段落
+        paragraphs.add(position + 1, newParagraph);
+
+        // 通知适配器插入新项
+        adapter.notifyItemInserted(position + 1);
+        adapter.notifyItemRangeChanged(position, paragraphs.size() - position);
+
+        // 滚动到新段落
+        recyclerView.smoothScrollToPosition(position + 1);
+
+        // 清除任何待处理的自动应用排版任务
+        autoApplyHandler.removeCallbacks(autoApplyRunnable);
+
+        // 立即应用排版
+        applyParagraphsToPaper();
+
+        // 可选：显示提示信息
+        Toast.makeText(this, "已分段", Toast.LENGTH_SHORT).show();
+    }
     private void setupListeners() {
         btnAddParagraph.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -169,9 +232,13 @@ public class MainActivity extends AppCompatActivity {
                 ParagraphAdapter.ViewHolder viewHolder = (ParagraphAdapter.ViewHolder) holder;
                 int position = viewHolder.getAdapterPosition();
                 if (position != RecyclerView.NO_POSITION) {
-                    paragraphs.get(position).setText(
-                            viewHolder.editText.getText().toString()
-                    );
+                    String editTextContent = viewHolder.editText.getText().toString();
+                    String paragraphContent = paragraphs.get(position).getText();
+
+                    // 只有当内容不同时才更新，避免不必要的刷新
+                    if (!editTextContent.equals(paragraphContent)) {
+                        paragraphs.get(position).setText(editTextContent);
+                    }
                 }
             }
         }

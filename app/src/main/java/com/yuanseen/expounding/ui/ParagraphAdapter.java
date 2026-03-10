@@ -20,6 +20,7 @@ public class ParagraphAdapter extends RecyclerView.Adapter<ParagraphAdapter.View
 
     public interface OnParagraphActionListener {
         void onRemoveClick(int position);
+        void onSplitClick(int position, int cursorPosition);
         void onAlignmentChanged(int position, TextAlignment alignment);
         void onTextChanged(int position, String text);
     }
@@ -71,13 +72,25 @@ public class ParagraphAdapter extends RecyclerView.Adapter<ParagraphAdapter.View
             } else {
                 alignment = TextAlignment.RIGHT;
             }
-            listener.onAlignmentChanged(holder.getAdapterPosition(), alignment);
+            if (listener != null) {
+                listener.onAlignmentChanged(holder.getAdapterPosition(), alignment);
+            }
         });
 
+        // 删除按钮
         holder.btnRemove.setOnClickListener(v -> {
             int pos = holder.getAdapterPosition();
-            if (pos != RecyclerView.NO_POSITION) {
+            if (pos != RecyclerView.NO_POSITION && listener != null) {
                 listener.onRemoveClick(pos);
+            }
+        });
+
+        // 分段按钮
+        holder.btnSplit.setOnClickListener(v -> {
+            int pos = holder.getAdapterPosition();
+            if (pos != RecyclerView.NO_POSITION && listener != null) {
+                int cursorPos = holder.editText.getSelectionStart();
+                listener.onSplitClick(pos, cursorPos);
             }
         });
 
@@ -97,7 +110,8 @@ public class ParagraphAdapter extends RecyclerView.Adapter<ParagraphAdapter.View
         RadioButton radioCenter;
         RadioButton radioRight;
         Button btnRemove;
-        TextWatcher textWatcher;
+        Button btnSplit;
+        public TextWatcher textWatcher;
 
         ViewHolder(View itemView) {
             super(itemView);
@@ -107,6 +121,7 @@ public class ParagraphAdapter extends RecyclerView.Adapter<ParagraphAdapter.View
             radioCenter = itemView.findViewById(R.id.radioCenter);
             radioRight = itemView.findViewById(R.id.radioRight);
             btnRemove = itemView.findViewById(R.id.btnRemove);
+            btnSplit = itemView.findViewById(R.id.btnSplit);
 
             // 创建TextWatcher
             textWatcher = new TextWatcher() {
@@ -130,17 +145,4 @@ public class ParagraphAdapter extends RecyclerView.Adapter<ParagraphAdapter.View
             };
         }
     }
-
-    // 添加一个方法来获取listener（在TextWatcher中使用）
-//    private OnParagraphActionListener listener;
-
-    // 在构造函数中设置listener
-    // 注意：需要在ViewHolder中能访问到listener，所以需要将listener设为成员变量并在构造函数中赋值
-    // 修改构造函数的代码：
-    /*
-    public ParagraphAdapter(List<ParagraphItem> paragraphs, OnParagraphActionListener listener) {
-        this.paragraphs = paragraphs;
-        this.listener = listener;
-    }
-    */
 }
