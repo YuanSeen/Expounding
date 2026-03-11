@@ -76,6 +76,13 @@ public class MainActivity extends AppCompatActivity {
             public void onFileLoaded(String fileName) {
                 loadFromFile(fileName);
             }
+
+            @Override
+            public void onFileDeleted(String fileName) {
+                // 文件删除后的处理（可选）
+                // 比如可以刷新UI或显示提示
+                Toast.makeText(MainActivity.this, "文件已删除: " + fileName, Toast.LENGTH_SHORT).show();
+            }
         });
 
         // 设置 RedGridPaperView 最小显示4行

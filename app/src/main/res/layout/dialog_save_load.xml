@@ -1,9 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:padding="16dp">
-
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:maxHeight="300dp"
+        android:visibility="gone"
+        android:id="@+id/scrollViewFiles">
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -26,20 +36,25 @@
         android:id="@+id/tvExistingFiles"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="已保存的文件："
+        android:text="已保存的文件（点击文件名选择，长按可删除）："
         android:textSize="16sp"
         android:textColor="#333333"
         android:visibility="gone"
         android:layout_marginBottom="8dp"/>
 
-    <ListView
-        android:id="@+id/listViewFiles"
-        android:layout_width="match_parent"
-        android:layout_height="200dp"
-        android:visibility="gone"
-        android:divider="#dddddd"
-        android:dividerHeight="1dp"
-        android:background="#f5f5f5"/>
+    <!-- 将ListView放在ScrollView中，实现滑动效果 -->
+
+
+        <ListView
+            android:id="@+id/listViewFiles"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:divider="#dddddd"
+            android:dividerHeight="1dp"
+            android:background="#f5f5f5"
+            android:scrollbars="none"/>
+        </LinearLayout>
+    </ScrollView>
 
     <TextView
         android:id="@+id/tvOverwriteWarning"
