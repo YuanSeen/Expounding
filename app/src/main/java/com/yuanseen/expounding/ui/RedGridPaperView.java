@@ -9,6 +9,7 @@ import android.util.AttributeSet;
 import android.view.View;
 import androidx.annotation.Nullable;
 
+import com.yuanseen.expounding.R;
 import com.yuanseen.expounding.utils.TextProcessor;
 
 import java.util.ArrayList;
@@ -20,7 +21,8 @@ public class RedGridPaperView extends View {
     private Paint textPaint;
     private Paint borderPaint;
     private Paint markPaint; // 用于字数标注的画笔
-    private List<String> lines;
+    private Paint punctuationPaint; // 新增：用于格子外标点的画笔
+    private List<TextProcessor.RowData> rowDataList; // 修改：使用RowData而不是String
     private float cellSize;
     private int rowCount;
 
@@ -31,16 +33,16 @@ public class RedGridPaperView extends View {
     private static final float MARK_TEXT_SIZE = 12f; // 字数标注文字大小（像素）
     private static final int TOP_PADDING = 20; // 顶部留白（像素）
 
-    // 新增：左右两侧留白宽度（用于放置标点）
-    private static final float LEFT_PUNCTUATION_WIDTH = 20f; // 左侧标点区域宽度
-    private static final float RIGHT_PUNCTUATION_WIDTH = 20f; // 右侧标点区域宽度
+    // 左右两侧留白宽度（用于放置标点）
+    private static final float LEFT_PUNCTUATION_WIDTH = 30f; // 左侧标点区域宽度
+    private static final float RIGHT_PUNCTUATION_WIDTH = 30f; // 右侧标点区域宽度
 
-    // 新增：实际绘制区域的起始X坐标（从左侧标点区域之后开始）
+    // 实际绘制区域的起始X坐标（从左侧标点区域之后开始）
     private float drawStartX = LEFT_PUNCTUATION_WIDTH;
-    // 新增：实际绘制区域的结束X坐标（到右侧标点区域之前）
+    // 实际绘制区域的结束X坐标（到右侧标点区域之前）
     private float drawEndX;
 
-    // 新增：最小行数设置
+    // 最小行数设置
     private int minRows = 4; // 默认最小显示4行
     private boolean forceMinRows = true; // 是否强制显示最小行数
 
@@ -75,10 +77,16 @@ public class RedGridPaperView extends View {
         borderPaint.setStyle(Paint.Style.STROKE);
         borderPaint.setStrokeWidth(BORDER_WIDTH);
 
-        // 文字画笔 - 深灰色，稍微调小一点
+        // 文字画笔 - 深灰色
         textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         textPaint.setColor(Color.parseColor("#333333"));
         textPaint.setTextSize(40f);
+
+        // 标点画笔 - 用于格子外标点
+        punctuationPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        punctuationPaint.setColor(Color.parseColor("#333333"));
+        punctuationPaint.setTextSize(40f);
+        punctuationPaint.setTextAlign(Paint.Align.CENTER);
 
         // 字数标注画笔 - 浅灰色，小字号
         markPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -86,7 +94,7 @@ public class RedGridPaperView extends View {
         markPaint.setTextSize(MARK_TEXT_SIZE);
         markPaint.setTextAlign(Paint.Align.CENTER); // 居中对齐
 
-        lines = new ArrayList<>();
+        rowDataList = new ArrayList<>();
     }
 
     /**
@@ -108,8 +116,9 @@ public class RedGridPaperView extends View {
     }
 
     public void setParagraphs(List<ParagraphItem> paragraphs) {
-        lines = TextProcessor.processParagraphs(paragraphs);
-        rowCount = lines.size();
+        // 使用新的处理方法
+        rowDataList = TextProcessor.processParagraphsToRows(paragraphs);
+        rowCount = rowDataList.size();
         invalidate();
         requestLayout();
     }
@@ -125,6 +134,7 @@ public class RedGridPaperView extends View {
 
         // 设置实际绘制区域的结束X坐标
         drawEndX = totalWidth - RIGHT_PUNCTUATION_WIDTH;
+        drawStartX = LEFT_PUNCTUATION_WIDTH;
 
         // 决定实际显示的行数
         int displayRows = rowCount;
@@ -161,8 +171,8 @@ public class RedGridPaperView extends View {
         // 绘制外边框（考虑顶部留白和左右留白）
         drawBorder(canvas, displayRows);
 
-        // 绘制文字（考虑顶部留白和左右留白）
-        drawText(canvas);
+        // 绘制文字和标点（考虑顶部留白和左右留白）
+        drawTextAndPunctuation(canvas);
 
         // 绘制字数标注（考虑顶部留白）
         drawWordCountMarks(canvas, displayRows);
@@ -211,26 +221,33 @@ public class RedGridPaperView extends View {
         }
     }
 
-    private void drawText(Canvas canvas) {
+    private void drawTextAndPunctuation(Canvas canvas) {
         float textSize = cellSize * 0.6f; // 文字大小为格子的60%
         textPaint.setTextSize(textSize);
+        punctuationPaint.setTextSize(textSize);
 
         // 计算文字基线位置（垂直居中）
         Paint.FontMetrics fontMetrics = textPaint.getFontMetrics();
         float textHeight = fontMetrics.descent - fontMetrics.ascent;
         float textOffset = (cellSize - textHeight) / 2f - fontMetrics.ascent;
 
-        for (int i = 0; i < lines.size(); i++) {
-            String line = lines.get(i);
-
-            // 按分隔符分割格子
-            String[] grids = line.split("\\‖");
+        for (int i = 0; i < rowDataList.size(); i++) {
+            TextProcessor.RowData rowData = rowDataList.get(i);
+            List<String> grids = rowData.getGrids();
 
             // 计算Y坐标
             float y = TOP_PADDING + i * (cellSize + ROW_SPACING) + textOffset;
 
-            for (int j = 0; j < grids.length && j < COLS; j++) {
-                String grid = grids[j];
+            // 绘制左侧标点（如果有）
+            if (rowData.hasLeftPunctuation()) {
+                float leftPunctX = drawStartX / 2f; // 左侧留白区域中心
+                float leftPunctY = y;
+                canvas.drawText(rowData.getLeftPunctuation(), leftPunctX, leftPunctY, punctuationPaint);
+            }
+
+            // 绘制格子内的文字
+            for (int j = 0; j < grids.size() && j < COLS; j++) {
+                String grid = grids.get(j);
 
                 // 计算该格子的X起始位置（从左侧留白之后开始）
                 float cellX = drawStartX + j * cellSize;
@@ -247,6 +264,13 @@ public class RedGridPaperView extends View {
 
                     canvas.drawText(grid, x, y, textPaint);
                 }
+            }
+
+            // 绘制右侧标点（如果有）
+            if (rowData.hasRightPunctuation()) {
+                float rightPunctX = drawEndX + RIGHT_PUNCTUATION_WIDTH / 2f; // 右侧留白区域中心
+                float rightPunctY = y;
+                canvas.drawText(rowData.getRightPunctuation(), rightPunctX, rightPunctY, punctuationPaint);
             }
         }
     }
@@ -311,8 +335,8 @@ public class RedGridPaperView extends View {
         // 绘制外边框（考虑顶部留白）
         drawBorder(canvas, displayRows);
 
-        // 绘制文字（考虑顶部留白）
-        drawText(canvas);
+        // 绘制文字和标点（考虑顶部留白）
+        drawTextAndPunctuation(canvas);
 
         // 绘制字数标注（考虑顶部留白）
         drawWordCountMarks(canvas, displayRows);

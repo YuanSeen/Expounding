@@ -30,8 +30,77 @@ public class TextProcessor {
             "——", "……"
     ));
 
-    public static List<String> processParagraphs(List<ParagraphItem> paragraphs) {
-        List<String> result = new ArrayList<>();
+    // 定义行数据类，包含格子内容和格子外标点
+    public static class RowData {
+        private List<String> grids; // 格子内的内容
+        private String leftPunctuation; // 左侧格子外标点（上一行遗留的标点）
+        private String rightPunctuation; // 右侧格子外标点（需要放到下一行的标点）
+
+        public RowData() {
+            this.grids = new ArrayList<>();
+            this.leftPunctuation = "";
+            this.rightPunctuation = "";
+        }
+
+        public List<String> getGrids() {
+            return grids;
+        }
+
+        public void setGrids(List<String> grids) {
+            this.grids = grids;
+        }
+
+        public String getLeftPunctuation() {
+            return leftPunctuation;
+        }
+
+        public void setLeftPunctuation(String leftPunctuation) {
+            this.leftPunctuation = leftPunctuation;
+        }
+
+        public String getRightPunctuation() {
+            return rightPunctuation;
+        }
+
+        public void setRightPunctuation(String rightPunctuation) {
+            this.rightPunctuation = rightPunctuation;
+        }
+
+        public boolean hasLeftPunctuation() {
+            return leftPunctuation != null && !leftPunctuation.isEmpty();
+        }
+
+        public boolean hasRightPunctuation() {
+            return rightPunctuation != null && !rightPunctuation.isEmpty();
+        }
+
+        // 转换为带标记的字符串用于显示（保留原有格式以兼容现有代码）
+        public String toDisplayString() {
+            StringBuilder sb = new StringBuilder();
+
+            // 添加左侧标点标记（用特殊符号标记，后续在View中解析）
+            if (hasLeftPunctuation()) {
+                sb.append("←").append(leftPunctuation).append("←");
+            }
+
+            // 添加格子内容
+            for (int i = 0; i < grids.size(); i++) {
+                if (i > 0) sb.append("‖");
+                sb.append(grids.get(i));
+            }
+
+            // 添加右侧标点标记
+            if (hasRightPunctuation()) {
+                sb.append("→").append(rightPunctuation).append("→");
+            }
+
+            return sb.toString();
+        }
+    }
+
+    public static List<RowData> processParagraphsToRows(List<ParagraphItem> paragraphs) {
+        List<RowData> result = new ArrayList<>();
+        String pendingLeftPunctuation = ""; // 待处理的标点（需要放在下一行左侧）
 
         for (ParagraphItem paragraph : paragraphs) {
             String text = paragraph.getText();
@@ -42,7 +111,8 @@ public class TextProcessor {
 
             // 如果文本为空，添加空行
             if (cleanText.isEmpty()) {
-                result.add(createEmptyLine(alignment));
+                RowData emptyRow = createEmptyRow();
+                result.add(emptyRow);
                 continue;
             }
 
@@ -50,60 +120,79 @@ public class TextProcessor {
             List<String> gridList = convertToGridList(cleanText);
 
             // 按每行25格分行的逻辑，考虑标点不能出现在行首的规则
-            List<String> rows = splitIntoRowsWithPunctuationRule(gridList);
+            List<RowData> rows = splitIntoRowsWithPunctuationRule(gridList, pendingLeftPunctuation);
+
+            // 更新待处理的标点（最后一行的右侧标点）
+            if (!rows.isEmpty()) {
+                RowData lastRow = rows.get(rows.size() - 1);
+                pendingLeftPunctuation = lastRow.getRightPunctuation();
+                lastRow.setRightPunctuation(""); // 清除最后一行的右侧标点，因为它是下一段的开始
+            }
 
             // 根据对齐方式处理每行
-            for (String row : rows) {
-                result.add(applyAlignment(row, alignment));
+            for (RowData row : rows) {
+                applyAlignmentToRow(row, alignment);
+                result.add(row);
             }
+        }
+
+        // 如果最后还有待处理的标点，创建一行空行来显示它
+        if (!pendingLeftPunctuation.isEmpty()) {
+            RowData lastRow = new RowData();
+            lastRow.setLeftPunctuation(pendingLeftPunctuation);
+            // 添加空格子
+            for (int i = 0; i < ROW_LENGTH; i++) {
+                lastRow.getGrids().add("　");
+            }
+            result.add(lastRow);
         }
 
         return result;
     }
 
     /**
+     * 创建空行
+     */
+    private static RowData createEmptyRow() {
+        RowData row = new RowData();
+        for (int i = 0; i < ROW_LENGTH; i++) {
+            row.getGrids().add("　");
+        }
+        return row;
+    }
+
+    /**
      * 将格子列表按行分割，同时处理标点不能出现在行首的规则
      */
-    private static List<String> splitIntoRowsWithPunctuationRule(List<String> gridList) {
-        List<String> rows = new ArrayList<>();
+    private static List<RowData> splitIntoRowsWithPunctuationRule(List<String> gridList, String initialLeftPunctuation) {
+        List<RowData> rows = new ArrayList<>();
         int currentIndex = 0;
+        String pendingRightPunctuation = ""; // 待处理的右侧标点
 
         while (currentIndex < gridList.size()) {
+            RowData row = new RowData();
+
+            // 计算这一行能放多少个格子
             int endIndex = Math.min(currentIndex + ROW_LENGTH, gridList.size());
 
-            // 检查是否需要调整行尾，避免标点出现在下一行行首
-            if (endIndex < gridList.size()) {
-                // 获取下一行的第一个格子
-                String nextGrid = gridList.get(endIndex);
+            // 获取当前行的格子
+            List<String> rowGrids = new ArrayList<>(gridList.subList(currentIndex, endIndex));
 
-                // 检查下一行第一个格子是否是"不能出现在行首的标点"
-                // 如果是，则将这个格子移动到当前行
-                if (isPunctuationCannotStartLine(nextGrid)) {
-                    // 增加结束索引，将这个格子包含在当前行
-                    endIndex++;
+            // 检查是否需要将标点移到上一行的右侧
+            // 如果当前行第一个字符是标点，说明上一行满了，这个标点应该放在上一行的右侧
+            if (!rows.isEmpty() && !rowGrids.isEmpty() && isPunctuationCannotStartLine(rowGrids.get(0))) {
+                // 将第一个标点移到上一行的右侧
+                String punctuation = rowGrids.remove(0);
+                rows.get(rows.size() - 1).setRightPunctuation(punctuation);
 
-                    // 如果这样导致当前行超过25格，需要特殊处理
-                    if (endIndex - currentIndex > ROW_LENGTH + 1) {
-                        // 这种情况很少见，但以防万一，我们最多允许当前行26格
-                        // 但实际上，这种情况应该不会发生，因为标点通常只有一个字符
-                        endIndex = currentIndex + ROW_LENGTH;
-                    }
-                }
+                // 重新计算结束索引，因为少了一个格子
+                endIndex = currentIndex + 1; // 跳过了第一个标点，所以从下一个开始
+                rowGrids = new ArrayList<>(gridList.subList(currentIndex + 1, Math.min(currentIndex + 1 + ROW_LENGTH, gridList.size())));
             }
 
-            // 获取当前行的格子子列表
-            List<String> rowGrids = gridList.subList(currentIndex, Math.min(endIndex, gridList.size()));
+            row.setGrids(rowGrids);
+            rows.add(row);
 
-            // 将格子列表合并为行字符串，格子之间用特殊分隔符标记
-            StringBuilder rowBuilder = new StringBuilder();
-            for (int i = 0; i < rowGrids.size(); i++) {
-                if (i > 0) {
-                    rowBuilder.append("‖");
-                }
-                rowBuilder.append(rowGrids.get(i));
-            }
-
-            rows.add(rowBuilder.toString());
             currentIndex = endIndex;
         }
 
@@ -111,41 +200,66 @@ public class TextProcessor {
     }
 
     /**
-     * 判断一个格子是否包含不能出现在行首的标点
-     */
-    private static boolean isPunctuationCannotStartLine(String grid) {
-        if (grid == null || grid.isEmpty()) {
-            return false;
-        }
-
-        // 检查是否是占两格的标点
-        if (DOUBLE_GRID_PUNCTUATION.contains(grid)) {
-            return true;
-        }
-
-        // 获取格子的第一个字符
-        char firstChar = grid.charAt(0);
-
-        // 检查是否是标点符号
-        return PUNCTUATION_CANNOT_START_LINE.contains(firstChar);
-    }
-
-    /**
      * 根据对齐方式处理一行
      */
-    private static String applyAlignment(String line, TextAlignment alignment) {
-        // 计算当前行的格子数量
-        int gridCount = line.isEmpty() ? 0 : line.split("\\‖").length;
+    private static void applyAlignmentToRow(RowData row, TextAlignment alignment) {
+        int gridCount = row.getGrids().size();
+
+        // 如果格子数已经是25，不需要对齐处理
+        if (gridCount == ROW_LENGTH) {
+            return;
+        }
+
+        List<String> newGrids = new ArrayList<>();
 
         switch (alignment) {
             case CENTER:
-                return centerAlign(line, gridCount);
+                int spacesNeeded = ROW_LENGTH - gridCount;
+                int leftSpaces = spacesNeeded / 2;
+                int rightSpaces = spacesNeeded - leftSpaces;
+
+                // 左侧空格
+                for (int i = 0; i < leftSpaces; i++) {
+                    newGrids.add("　");
+                }
+                // 内容
+                newGrids.addAll(row.getGrids());
+                // 右侧空格
+                for (int i = 0; i < rightSpaces; i++) {
+                    newGrids.add("　");
+                }
+                break;
+
             case RIGHT:
-                return rightAlign(line, gridCount);
+                // 左侧空格
+                for (int i = gridCount; i < ROW_LENGTH; i++) {
+                    newGrids.add("　");
+                }
+                // 内容
+                newGrids.addAll(row.getGrids());
+                break;
+
             case LEFT:
             default:
-                return leftAlign(line, gridCount);
+                // 内容
+                newGrids.addAll(row.getGrids());
+                // 右侧空格
+                for (int i = gridCount; i < ROW_LENGTH; i++) {
+                    newGrids.add("　");
+                }
+                break;
         }
+
+        row.setGrids(newGrids);
+    }
+
+    public static List<String> processParagraphs(List<ParagraphItem> paragraphs) {
+        List<RowData> rows = processParagraphsToRows(paragraphs);
+        List<String> result = new ArrayList<>();
+        for (RowData row : rows) {
+            result.add(row.toDisplayString());
+        }
+        return result;
     }
 
     private static List<String> convertToGridList(String text) {
@@ -217,63 +331,20 @@ public class TextProcessor {
                 || ub == Character.UnicodeBlock.HALFWIDTH_AND_FULLWIDTH_FORMS;
     }
 
-    private static String createEmptyLine(TextAlignment alignment) {
-        StringBuilder line = new StringBuilder();
-        for (int i = 0; i < 25; i++) {
-            if (i > 0) line.append("‖");
-            line.append("　");
-        }
-        return line.toString();
-    }
-
-    private static String leftAlign(String line, int gridCount) {
-        StringBuilder result = new StringBuilder(line);
-        for (int i = gridCount; i < ROW_LENGTH; i++) {
-            if (result.length() > 0) result.append("‖");
-            result.append("　");
-        }
-        return result.toString();
-    }
-
-    private static String centerAlign(String line, int gridCount) {
-        int spacesNeeded = ROW_LENGTH - gridCount;
-        int leftSpaces = spacesNeeded / 2;
-        int rightSpaces = spacesNeeded - leftSpaces;
-
-        StringBuilder result = new StringBuilder();
-
-        // 左侧空格
-        for (int i = 0; i < leftSpaces; i++) {
-            if (result.length() > 0) result.append("‖");
-            result.append("　");
+    private static boolean isPunctuationCannotStartLine(String grid) {
+        if (grid == null || grid.isEmpty()) {
+            return false;
         }
 
-        // 内容
-        if (result.length() > 0 && line.length() > 0) result.append("‖");
-        result.append(line);
-
-        // 右侧空格
-        for (int i = 0; i < rightSpaces; i++) {
-            result.append("‖");
-            result.append("　");
+        // 检查是否是占两格的标点
+        if (DOUBLE_GRID_PUNCTUATION.contains(grid)) {
+            return true;
         }
 
-        return result.toString();
-    }
+        // 获取格子的第一个字符
+        char firstChar = grid.charAt(0);
 
-    private static String rightAlign(String line, int gridCount) {
-        StringBuilder result = new StringBuilder();
-
-        // 左侧空格
-        for (int i = gridCount; i < ROW_LENGTH; i++) {
-            if (result.length() > 0) result.append("‖");
-            result.append("　");
-        }
-
-        // 内容
-        if (result.length() > 0 && line.length() > 0) result.append("‖");
-        result.append(line);
-
-        return result.toString();
+        // 检查是否是标点符号
+        return PUNCTUATION_CANNOT_START_LINE.contains(firstChar);
     }
 }
