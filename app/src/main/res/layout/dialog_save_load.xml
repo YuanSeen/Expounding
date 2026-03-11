@@ -1,0 +1,54 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="文件名："
+        android:textSize="16sp"
+        android:textColor="#333333"
+        android:layout_marginBottom="8dp"/>
+
+    <EditText
+        android:id="@+id/editFileName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="请输入文件名"
+        android:maxLines="1"
+        android:padding="12dp"
+        android:background="@android:drawable/editbox_background"
+        android:layout_marginBottom="16dp"/>
+
+    <TextView
+        android:id="@+id/tvExistingFiles"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="已保存的文件："
+        android:textSize="16sp"
+        android:textColor="#333333"
+        android:visibility="gone"
+        android:layout_marginBottom="8dp"/>
+
+    <ListView
+        android:id="@+id/listViewFiles"
+        android:layout_width="match_parent"
+        android:layout_height="200dp"
+        android:visibility="gone"
+        android:divider="#dddddd"
+        android:dividerHeight="1dp"
+        android:background="#f5f5f5"/>
+
+    <TextView
+        android:id="@+id/tvOverwriteWarning"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="同名文件已存在，保存将覆盖原文件"
+        android:textColor="#FF9800"
+        android:textSize="14sp"
+        android:visibility="gone"
+        android:layout_marginTop="8dp"/>
+
+</LinearLayout>

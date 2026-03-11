@@ -29,6 +29,10 @@ import java.util.Locale;
 import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
+import com.yuanseen.expounding.ui.SaveLoadDialog;
+import com.yuanseen.expounding.utils.SaveLoadManager;
+import android.app.AlertDialog;
+import android.widget.EditText;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -45,6 +49,10 @@ public class MainActivity extends AppCompatActivity {
 
     private Handler autoApplyHandler = new Handler(Looper.getMainLooper());
     private Runnable autoApplyRunnable;
+    private Button btnSave;
+    private Button btnLoad;
+    private SaveLoadManager saveLoadManager;
+    private SaveLoadDialog saveLoadDialog;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -55,6 +63,20 @@ public class MainActivity extends AppCompatActivity {
         setupRecyclerView();
         setupListeners();
         checkPermission();
+
+        // 初始化保存管理
+        saveLoadManager = new SaveLoadManager(this);
+        saveLoadDialog = new SaveLoadDialog(this, new SaveLoadDialog.OnFileActionListener() {
+            @Override
+            public void onFileSaved(String fileName) {
+                saveToFile(fileName);
+            }
+
+            @Override
+            public void onFileLoaded(String fileName) {
+                loadFromFile(fileName);
+            }
+        });
 
         // 设置 RedGridPaperView 最小显示4行
         redGridPaper.setMinRows(4);
@@ -79,12 +101,9 @@ public class MainActivity extends AppCompatActivity {
         btnExportText = findViewById(R.id.btnExportText);
         btnExportImage = findViewById(R.id.btnExportImage);
 
-        // 隐藏或移除应用排版按钮
-        // 如果布局文件中还有btnApply，可以在这里隐藏它
-        Button btnApply = findViewById(R.id.btnApply);
-        if (btnApply != null) {
-            btnApply.setVisibility(View.GONE);
-        }
+        // 新增保存和加载按钮
+        btnSave = findViewById(R.id.btnSave);
+        btnLoad = findViewById(R.id.btnLoad);
     }
 
     private void setupRecyclerView() {
@@ -212,7 +231,82 @@ public class MainActivity extends AppCompatActivity {
                 exportImageToFile();
             }
         });
+
+        // 新增保存和加载按钮监听器
+        btnSave.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                // 先保存所有编辑框的内容
+                saveAllEditTextChanges();
+                // 显示保存对话框
+                saveLoadDialog.showSaveDialog();
+            }
+        });
+
+        btnLoad.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                saveLoadDialog.showLoadDialog();
+            }
+        });
     }
+
+    /**
+     * 保存到文件
+     */
+    private void saveToFile(String fileName) {
+        // 再次确保数据是最新的
+        saveAllEditTextChanges();
+
+        // 检查文件是否已存在
+        if (saveLoadManager.fileExists(fileName)) {
+            saveLoadDialog.showOverwriteConfirmDialog(fileName, () -> {
+                performSave(fileName);
+            });
+        } else {
+            performSave(fileName);
+        }
+    }
+
+    private void performSave(String fileName) {
+        boolean success = saveLoadManager.saveToFile(paragraphs, fileName);
+        if (success) {
+            Toast.makeText(this, "保存成功: " + fileName, Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(this, "保存失败", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /**
+     * 从文件加载
+     */
+    private void loadFromFile(String fileName) {
+        List<ParagraphItem> loadedParagraphs = saveLoadManager.loadFromFile(fileName);
+
+        if (loadedParagraphs != null) {
+            // 清空当前段落
+            paragraphs.clear();
+
+            // 添加加载的段落
+            paragraphs.addAll(loadedParagraphs);
+
+            // 确保至少有一个段落
+            if (paragraphs.isEmpty()) {
+                paragraphs.add(new ParagraphItem("", TextAlignment.LEFT));
+            }
+
+            // 通知适配器更新
+            adapter.notifyDataSetChanged();
+
+            // 应用排版
+            applyParagraphsToPaper();
+
+            Toast.makeText(this, "加载成功: " + fileName, Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(this, "加载失败", Toast.LENGTH_SHORT).show();
+        }
+    }
+
 
     /**
      * 将段落应用到作文纸视图
