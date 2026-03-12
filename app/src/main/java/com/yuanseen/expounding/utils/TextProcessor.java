@@ -167,32 +167,37 @@ public class TextProcessor {
     private static List<RowData> splitIntoRowsWithPunctuationRule(List<String> gridList, String initialLeftPunctuation) {
         List<RowData> rows = new ArrayList<>();
         int currentIndex = 0;
-        String pendingRightPunctuation = ""; // 待处理的右侧标点
 
         while (currentIndex < gridList.size()) {
             RowData row = new RowData();
 
-            // 计算这一行能放多少个格子
-            int endIndex = Math.min(currentIndex + ROW_LENGTH, gridList.size());
+            // 获取这一行应该有的格子数
+            int targetCount = ROW_LENGTH;
+
+            // 计算这一行的结束索引
+            int endIndex = Math.min(currentIndex + targetCount, gridList.size());
 
             // 获取当前行的格子
             List<String> rowGrids = new ArrayList<>(gridList.subList(currentIndex, endIndex));
 
-            // 检查是否需要将标点移到上一行的右侧
-            // 如果当前行第一个字符是标点，说明上一行满了，这个标点应该放在上一行的右侧
+            // 检查当前行是否以不能放在行首的标点开头（且不是第一行）
             if (!rows.isEmpty() && !rowGrids.isEmpty() && isPunctuationCannotStartLine(rowGrids.get(0))) {
-                // 将第一个标点移到上一行的右侧
+                // 将这个标点放到上一行的右侧
                 String punctuation = rowGrids.remove(0);
                 rows.get(rows.size() - 1).setRightPunctuation(punctuation);
 
-                // 重新计算结束索引，因为少了一个格子
-                endIndex = currentIndex + 1; // 跳过了第一个标点，所以从下一个开始
-                rowGrids = new ArrayList<>(gridList.subList(currentIndex + 1, Math.min(currentIndex + 1 + ROW_LENGTH, gridList.size())));
+                // 调整结束索引：因为少了一个格子，所以可以多取一个
+                if (endIndex < gridList.size()) {
+                    // 如果能多取一个，就加上
+                    rowGrids.add(gridList.get(endIndex));
+                    endIndex++;
+                }
             }
 
             row.setGrids(rowGrids);
             rows.add(row);
 
+            // 更新当前索引到结束位置
             currentIndex = endIndex;
         }
 
