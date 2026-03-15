@@ -102,21 +102,15 @@ public class TextProcessor {
         List<RowData> result = new ArrayList<>();
         String pendingLeftPunctuation = ""; // 待处理的标点（需要放在下一行左侧）
 
-        for (ParagraphItem paragraph : paragraphs) {
+        for (int pIndex = 0; pIndex < paragraphs.size(); pIndex++) {
+            ParagraphItem paragraph = paragraphs.get(pIndex);
             String text = paragraph.getText();
             TextAlignment alignment = paragraph.getAlignment();
 
             // 处理文本：保留空格但移除换行符
             String cleanText = text.replace("\n", "").replace("\r", "");
 
-            // 如果文本为空，添加空行
-            if (cleanText.isEmpty()) {
-                RowData emptyRow = createEmptyRow();
-                result.add(emptyRow);
-                continue;
-            }
-
-            // 将文本转换为格子序列（每个格子是一个字符或两个英文字符或双标点）
+            // 将文本转换为格子序列
             List<String> gridList = convertToGridList(cleanText);
 
             // 按每行25格分行的逻辑，考虑标点不能出现在行首的规则
@@ -126,26 +120,50 @@ public class TextProcessor {
             if (!rows.isEmpty()) {
                 RowData lastRow = rows.get(rows.size() - 1);
                 pendingLeftPunctuation = lastRow.getRightPunctuation();
-                lastRow.setRightPunctuation(""); // 清除最后一行的右侧标点，因为它是下一段的开始
-            }
+                lastRow.setRightPunctuation(""); // 清除最后一行的右侧标点
 
-            // 根据对齐方式处理每行
-            for (RowData row : rows) {
-                applyAlignmentToRow(row, alignment);
-                result.add(row);
+                // 根据对齐方式处理每行
+                for (RowData row : rows) {
+                    applyAlignmentToRow(row, alignment);
+                }
+
+                // **新增：如果是最后一段，并且有pending标点，创建一个新行**
+                if (pIndex == paragraphs.size() - 1 && !pendingLeftPunctuation.isEmpty()) {
+                    RowData lastRowWithPunct = new RowData();
+                    lastRowWithPunct.setLeftPunctuation(pendingLeftPunctuation);
+                    // 添加空格子
+                    for (int i = 0; i < ROW_LENGTH; i++) {
+                        lastRowWithPunct.getGrids().add("　");
+                    }
+                    result.add(lastRowWithPunct);
+                    pendingLeftPunctuation = "";
+                } else {
+                    result.addAll(rows);
+                }
+            } else {
+                // **新增：处理空段落**
+                // 如果文本为空且没有待处理的标点，才添加空行
+                if (cleanText.isEmpty() && pendingLeftPunctuation.isEmpty()) {
+                    RowData emptyRow = createEmptyRow();
+                    result.add(emptyRow);
+                }
+                // 如果文本为空但有pending标点，创建一个带左侧标点的行
+                else if (cleanText.isEmpty() && !pendingLeftPunctuation.isEmpty()) {
+                    RowData rowWithPunct = new RowData();
+                    rowWithPunct.setLeftPunctuation(pendingLeftPunctuation);
+                    for (int i = 0; i < ROW_LENGTH; i++) {
+                        rowWithPunct.getGrids().add("　");
+                    }
+                    applyAlignmentToRow(rowWithPunct, alignment);
+                    result.add(rowWithPunct);
+                    pendingLeftPunctuation = "";
+                }
             }
         }
 
+        // **移除原来的最后处理代码，因为已经在循环中处理了**
         // 如果最后还有待处理的标点，创建一行空行来显示它
-        if (!pendingLeftPunctuation.isEmpty()) {
-            RowData lastRow = new RowData();
-            lastRow.setLeftPunctuation(pendingLeftPunctuation);
-            // 添加空格子
-            for (int i = 0; i < ROW_LENGTH; i++) {
-                lastRow.getGrids().add("　");
-            }
-            result.add(lastRow);
-        }
+        // if (!pendingLeftPunctuation.isEmpty()) { ... }
 
         return result;
     }
@@ -167,9 +185,16 @@ public class TextProcessor {
     private static List<RowData> splitIntoRowsWithPunctuationRule(List<String> gridList, String initialLeftPunctuation) {
         List<RowData> rows = new ArrayList<>();
         int currentIndex = 0;
+        String pendingPunctuation = initialLeftPunctuation; // 待处理的左侧标点
 
         while (currentIndex < gridList.size()) {
             RowData row = new RowData();
+
+            // 如果有待处理的左侧标点，先设置
+            if (!pendingPunctuation.isEmpty()) {
+                row.setLeftPunctuation(pendingPunctuation);
+                pendingPunctuation = "";
+            }
 
             // 获取这一行应该有的格子数
             int targetCount = ROW_LENGTH;
@@ -192,6 +217,15 @@ public class TextProcessor {
                     rowGrids.add(gridList.get(endIndex));
                     endIndex++;
                 }
+            }
+
+            // **新增：检查当前行是否为空行（没有格子且没有左侧标点）**
+            // 如果当前行没有格子，但有左侧标点，仍然需要创建行
+            // 如果既没有格子也没有左侧标点，则跳过这一行
+            if (rowGrids.isEmpty() && !row.hasLeftPunctuation()) {
+                // 这一行是空的，跳过它，继续处理下一批格子
+                currentIndex = endIndex;
+                continue;
             }
 
             row.setGrids(rowGrids);
