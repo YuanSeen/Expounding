@@ -238,12 +238,6 @@ public class RedGridPaperView extends View {
             // 计算Y坐标
             float y = TOP_PADDING + i * (cellSize + ROW_SPACING) + textOffset;
 
-            // 绘制左侧标点（如果有）
-            if (rowData.hasLeftPunctuation()) {
-                float leftPunctX = drawStartX / 2f; // 左侧留白区域中心
-                float leftPunctY = y;
-                canvas.drawText(rowData.getLeftPunctuation(), leftPunctX, leftPunctY, punctuationPaint);
-            }
 
             // 绘制格子内的文字
             for (int j = 0; j < grids.size() && j < COLS; j++) {

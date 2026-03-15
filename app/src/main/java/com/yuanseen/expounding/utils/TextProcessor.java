@@ -13,16 +13,10 @@ public class TextProcessor {
 
     private static final int ROW_LENGTH = 25; // 每行25格
 
-    // 定义不能出现在行首的标点符号（这些符号需要留在上一行的格子外）
+    // 定义不能出现在行首的标点符号
     private static final Set<Character> PUNCTUATION_CANNOT_START_LINE = new HashSet<>(Arrays.asList(
             '，', '。', '、', '；', '：', '？', '！', '”', '’', '）', '】', '》', '』', '〕', '}',
             ',', '.', ';', ':', '?', '!', ')', ']', '}'
-    ));
-
-    // 定义必须作为独立格子处理的标点（如引号、书名号等）
-    private static final Set<Character> PUNCTUATION_SPECIAL = new HashSet<>(Arrays.asList(
-            '“', '”', '‘', '’', '（', '）', '【', '】', '《', '》', '〈', '〉', '〔', '〕', '{', '}',
-            '"', '\'', '(', ')', '[', ']'
     ));
 
     // 定义需要占两格的标点符号
@@ -30,15 +24,13 @@ public class TextProcessor {
             "——", "……"
     ));
 
-    // 定义行数据类，包含格子内容和格子外标点
+    // 简化后的行数据类：只有格子内容和右侧标点
     public static class RowData {
         private List<String> grids; // 格子内的内容
-        private String leftPunctuation; // 左侧格子外标点（上一行遗留的标点）
-        private String rightPunctuation; // 右侧格子外标点（需要放到下一行的标点）
+        private String rightPunctuation; // 右侧格子外标点
 
         public RowData() {
             this.grids = new ArrayList<>();
-            this.leftPunctuation = "";
             this.rightPunctuation = "";
         }
 
@@ -50,14 +42,6 @@ public class TextProcessor {
             this.grids = grids;
         }
 
-        public String getLeftPunctuation() {
-            return leftPunctuation;
-        }
-
-        public void setLeftPunctuation(String leftPunctuation) {
-            this.leftPunctuation = leftPunctuation;
-        }
-
         public String getRightPunctuation() {
             return rightPunctuation;
         }
@@ -66,22 +50,13 @@ public class TextProcessor {
             this.rightPunctuation = rightPunctuation;
         }
 
-        public boolean hasLeftPunctuation() {
-            return leftPunctuation != null && !leftPunctuation.isEmpty();
-        }
-
         public boolean hasRightPunctuation() {
             return rightPunctuation != null && !rightPunctuation.isEmpty();
         }
 
-        // 转换为带标记的字符串用于显示（保留原有格式以兼容现有代码）
+        // 转换为带标记的字符串用于显示
         public String toDisplayString() {
             StringBuilder sb = new StringBuilder();
-
-            // 添加左侧标点标记（用特殊符号标记，后续在View中解析）
-            if (hasLeftPunctuation()) {
-                sb.append("←").append(leftPunctuation).append("←");
-            }
 
             // 添加格子内容
             for (int i = 0; i < grids.size(); i++) {
@@ -100,9 +75,7 @@ public class TextProcessor {
 
     public static List<RowData> processParagraphsToRows(List<ParagraphItem> paragraphs) {
         List<RowData> result = new ArrayList<>();
-        String pendingLeftPunctuation = ""; // 待处理的标点（需要放在下一行左侧）
 
-        // 遍历段落时记录索引，区分是否是最后一段
         for (int paraIdx = 0; paraIdx < paragraphs.size(); paraIdx++) {
             ParagraphItem paragraph = paragraphs.get(paraIdx);
             String text = paragraph.getText();
@@ -115,28 +88,14 @@ public class TextProcessor {
             if (cleanText.isEmpty()) {
                 RowData emptyRow = createEmptyRow();
                 result.add(emptyRow);
-                // 空段落后重置待处理标点，避免空行传递标点
-                pendingLeftPunctuation = "";
                 continue;
             }
 
-            // 将文本转换为格子序列（每个格子是一个字符或两个英文字符或双标点）
+            // 将文本转换为格子序列
             List<String> gridList = convertToGridList(cleanText);
 
-            // 按每行25格分行的逻辑，考虑标点不能出现在行首的规则
-            List<RowData> rows = splitIntoRowsWithPunctuationRule(gridList, pendingLeftPunctuation);
-
-            // 重置待处理标点，仅在非最后一段时传递
-            pendingLeftPunctuation = "";
-            if (!rows.isEmpty()) {
-                RowData lastRow = rows.get(rows.size() - 1);
-                // 核心修复1：仅非最后一段时，才传递最后一行的右侧标点
-                if (paraIdx < paragraphs.size() - 1) {
-                    pendingLeftPunctuation = lastRow.getRightPunctuation();
-                    lastRow.setRightPunctuation(""); // 清除当前段最后一行的右侧标点
-                }
-                // 最后一段保留自身的右侧标点，不传递
-            }
+            // 按每行25格分行，处理标点不能出现在行首的规则
+            List<RowData> rows = splitIntoRows(gridList);
 
             // 根据对齐方式处理每行
             for (RowData row : rows) {
@@ -144,9 +103,6 @@ public class TextProcessor {
                 result.add(row);
             }
         }
-
-        // 核心修复2：彻底移除「创建空行显示剩余标点」的逻辑，避免跨段标点泄露
-        // 原代码中此处的空行创建逻辑是跨段标点错乱的关键诱因
 
         return result;
     }
@@ -162,56 +118,43 @@ public class TextProcessor {
         return row;
     }
 
-    private static List<RowData> splitIntoRowsWithPunctuationRule(List<String> gridList, String initialLeftPunctuation) {
+    /**
+     * 将格子列表分行为每行25格，处理标点不能出现在行首的规则
+     */
+    private static List<RowData> splitIntoRows(List<String> gridList) {
         List<RowData> rows = new ArrayList<>();
         int currentIndex = 0;
-        String pendingLeftPunctuation = initialLeftPunctuation != null ? initialLeftPunctuation : "";
 
         while (currentIndex < gridList.size()) {
             RowData row = new RowData();
 
-            // 处理左侧标点（仅来自当前段内上一行的右侧标点）
-            if (!pendingLeftPunctuation.isEmpty()) {
-                row.setLeftPunctuation(pendingLeftPunctuation);
-                pendingLeftPunctuation = ""; // 使用后清空
-            }
-
-            // 目标格子数始终为25（左侧标点不占用格子）
-            int targetCount = ROW_LENGTH;
-            int endIndex = Math.min(currentIndex + targetCount, gridList.size());
+            // 计算当前行可以取的格子数
+            int endIndex = Math.min(currentIndex + ROW_LENGTH, gridList.size());
             List<String> rowGrids = new ArrayList<>(gridList.subList(currentIndex, endIndex));
 
-            // 处理行首标点问题：仅在当前段内调整
+            // 处理行首标点问题：如果当前行第一个格子是不能出现在行首的标点
             if (!rows.isEmpty() && !rowGrids.isEmpty() && isPunctuationCannotStartLine(rowGrids.get(0))) {
+                // 把这个标点从当前行移除
                 String punctuation = rowGrids.remove(0);
+                // 放到上一行的右侧
                 rows.get(rows.size() - 1).setRightPunctuation(punctuation);
-                // 补全格子（如果还有剩余字符）
+                // 如果还有下一个格子，补进来
                 if (endIndex < gridList.size()) {
                     rowGrids.add(gridList.get(endIndex));
                     endIndex++;
                 }
             }
 
-            // 处理空行情况
+            // 如果当前行没有格子（理论上不会发生，但以防万一）
             if (rowGrids.isEmpty()) {
-                if (row.hasLeftPunctuation()) {
-                    // 有左侧标点但无内容：填充空格里
-                    for (int i = 0; i < ROW_LENGTH; i++) {
-                        rowGrids.add("　");
-                    }
-                } else {
-                    currentIndex = endIndex;
-                    continue;
-                }
+                currentIndex = endIndex;
+                continue;
             }
 
             row.setGrids(rowGrids);
             rows.add(row);
             currentIndex = endIndex;
         }
-
-        // 核心修复3：移除方法内「创建空行显示剩余标点」的逻辑
-        // 原逻辑会为未处理的标点额外创建行，导致跨段错乱
 
         return rows;
     }
@@ -270,13 +213,13 @@ public class TextProcessor {
         int i = 0;
         while (i < text.length()) {
             char c = text.charAt(i);
-            // 处理空格 - 统一为全角空格占一格
+            // 处理空格
             if (c == ' ' || c == '　') {
                 gridList.add("　");
                 i++;
                 continue;
             }
-            // 处理双字符标点（破折号、省略号）
+            // 处理双字符标点
             if (c == '—' || c == '…') {
                 if (i + 1 < text.length()) {
                     char nextChar = text.charAt(i + 1);
